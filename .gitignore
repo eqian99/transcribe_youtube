@@ -1,0 +1,63 @@
+*.wav
+venv/
+*package-lock.json
+
+# Node modules
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# IDE directories and files
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+
+# Dependency directories
+.jest/
+.pnp/
+.pnp.js
+.pycache/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Python files
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Optional npm cache and tmp directories
+.npm
+.npmrc
+node-gyp
+tmp/
+
+# Build directory
+dist/
+
+# env files
+.env
+.env.test
+.env.production
+
+# package locks
+package-lock.json  # Optional
+yarn.lock  # Optional
+

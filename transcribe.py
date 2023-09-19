@@ -1,13 +1,15 @@
-import boto3
-import json
-import time
 import uuid
+import time
+import os
+import boto3
+import requests
 from pydub import AudioSegment
-import argparse
 from yt_dlp import YoutubeDL
-import requests 
-import os 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 
+# Audio Processing Functions
 def download_audio(youtube_url):
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -16,7 +18,7 @@ def download_audio(youtube_url):
             'preferredcodec': 'wav',
             'preferredquality': '192',
         }],
-        'outtmpl': 'audio',  
+        'outtmpl': 'audio',
     }
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
@@ -27,7 +29,7 @@ def upload_to_s3(filename, bucket_name):
     return f"s3://{bucket_name}/{filename}"
 
 def transcribe_audio(job_name, job_uri):
-    transcribe = boto3.client('transcribe', region_name='us-west-1')  # specify the region
+    transcribe = boto3.client('transcribe', region_name='us-west-1')
     transcribe.start_transcription_job(
         TranscriptionJobName=job_name,
         Media={'MediaFileUri': job_uri},
@@ -70,36 +72,42 @@ def format_transcript(turns):
 
 def parse_audio(youtube_url, bucket_name="transcribe-youtube-distinct-speakers"):
     job_name = f"TranscribeJob-{uuid.uuid4()}"
-
     download_audio(youtube_url)
     job_uri = upload_to_s3("audio.wav", bucket_name)
     transcript_uri = transcribe_audio(job_name, job_uri)
     text = get_text_from_transcription(transcript_uri)
-
     return text
 
+# Initialize Flask App
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+anthropic = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+prompt = ""
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Transcribe a YouTube video.')
-    parser.add_argument('youtube_url', type=str, help='The URL of the YouTube video to transcribe.')
-    
-    args = parser.parse_args()
-    text = parse_audio(args.youtube_url)
-
-    print(text)
-
+# API Endpoints
+@app.route('/parse_audio', methods=['POST'])
+def parse_audio_endpoint():
+    global prompt
+    youtube_url = request.json['youtube_url']
+    text = parse_audio(youtube_url)
     formatted_text = format_transcript(text)
+    prompt = f"{HUMAN_PROMPT} {formatted_text}"
+    return jsonify({"message": "Audio parsed and prompt updated", "text": formatted_text})
 
-    prompt = "Test prompt"
-
-    # Make the request to the Claude API
-    response = requests.post(
-        "https://api.anthropic.com/v1/complete",
-        headers={"Authorization": f"Bearer {os.getenv('ANTHROPIC_API_KEY')}"},
-        json={"prompt": f"\n\nHuman: {prompt}\n\nAssistant:"},
+@app.route('/chat', methods=['POST'])
+def chat():
+    global prompt
+    user_input = request.json['user_input']
+    prompt += f"{HUMAN_PROMPT} {user_input}{AI_PROMPT}"
+    completion = anthropic.completions.create(
+        model="claude-2",
+        max_tokens_to_sample=10000,
+        prompt=prompt
     )
+    output = completion.completion
+    prompt += output
+    return jsonify({"message": "Chat updated", "output": output})
 
-    output = response.json()["text"]
-    print(output)
-
+# Main Function
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=True)
